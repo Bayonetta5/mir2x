@@ -85,7 +85,7 @@ Theron::Address CharObject::Activate()
 {
     auto stAddress = ActiveObject::Activate();
     if(ActorPodValid()){
-        DispatchAction(ActionStand(X(), Y(), Direction()));
+        DispatchAction(true, ActionStand(X(), Y(), Direction()));
     }
 
     AddTick();
@@ -96,25 +96,21 @@ void CharObject::ReportAction(uint32_t, const ActionNode &)
 {
 }
 
-void CharObject::DispatchAction(const ActionNode &rstAction)
+void CharObject::DispatchAction(bool bThroughMap, const ActionNode &rstAction)
 {
     // should check to avoid dead CO call this function
     // this would cause zombies
 
-    if(true
-            && ActorPodValid()
-            && m_Map
-            && m_Map->ActorPodValid()){
-
+    if(ActorPodValid()){
         AMAction stAMA;
         std::memset(&stAMA, 0, sizeof(stAMA));
 
         stAMA.UID   = UID();
         stAMA.MapID = MapID();
 
-        stAMA.Action      = rstAction.Action;
-        stAMA.Speed       = rstAction.Speed;
-        stAMA.Direction   = rstAction.Direction;
+        stAMA.Action    = rstAction.Action;
+        stAMA.Speed     = rstAction.Speed;
+        stAMA.Direction = rstAction.Direction;
 
         stAMA.X    = rstAction.X;
         stAMA.Y    = rstAction.Y;
@@ -124,12 +120,52 @@ void CharObject::DispatchAction(const ActionNode &rstAction)
         stAMA.AimUID      = rstAction.AimUID;
         stAMA.ActionParam = rstAction.ActionParam;
 
-        m_ActorPod->Forward({MPK_ACTION, stAMA}, m_Map->GetAddress());
-        return;
-    }
+        if(bThroughMap){
+            if(m_Map && m_Map->ActorPodValid()){
+                m_ActorPod->Forward({MPK_ACTION, stAMA}, m_Map->GetAddress());
+            }
+        }else{
+            for(auto pLoc = m_LocationList.begin(); pLoc != m_LocationList.end();){
+                extern MonoServer *g_MonoServer;
+                if(auto stUIDRecord = g_MonoServer->GetUIDRecord(pLoc->first)){
+                    auto pNext  = std::next(pLoc);
+                    auto nX     = pLoc->second.X;
+                    auto nY     = pLoc->second.Y;
+                    auto nMapID = pLoc->second.MapID;
 
-    extern MonoServer *g_MonoServer;
-    g_MonoServer->AddLog(LOGTYPE_WARNING, "Can't dispatch action: %p", &rstAction);
+                    if(true
+                            && m_Map->In(nMapID, nX, nY)
+                            && LDistance2(nX, nY, X(), Y()) < 100){
+
+                        // if one co becomes my new neighbor
+                        // it should be included in the list already
+                        // but if we find a neighbor in the cache list we need to refresh it
+
+
+                        RetrieveLocation(pLoc->first, [this, stAMA, stUIDRecord](const COLocation &rstLocation)
+                        {
+                            auto nX     = rstLocation.X;
+                            auto nY     = rstLocation.Y;
+                            auto nMapID = rstLocation.MapID;
+
+                            if(true
+                                    && m_Map->In(nMapID, nX, nY)
+                                    && LDistance2(nX, nY, X(), Y()) < 100){
+                                m_ActorPod->Forward({MPK_ACTION, stAMA}, stUIDRecord.GetAddress());
+                            }
+                        });
+                    }
+
+                    // we need to keep pNext
+                    // because RetrieveLocation() may remove current node
+
+                    pLoc = pNext;
+                }else{
+                    pLoc = m_LocationList.erase(pLoc);
+                }
+            }
+        }
+    }
 }
 
 bool CharObject::RequestMove(int nX, int nY, int nSpeed, bool bAllowHalfMove, std::function<void()> fnOnMoveOK, std::function<void()> fnOnMoveError)
@@ -189,7 +225,7 @@ bool CharObject::RequestMove(int nX, int nY, int nSpeed, bool bAllowHalfMove, st
                             m_LastMoveTime = g_MonoServer->GetTimeTick();
 
                             m_ActorPod->Forward(MPK_OK, rstAddr, rstMPK.ID());
-                            DispatchAction(ActionMove(nOldX, nOldY, X(), Y(), nSpeed, Horse()));
+                            DispatchAction(true, ActionMove(nOldX, nOldY, X(), Y(), nSpeed, Horse()));
 
                             if(fnOnMoveOK){
                                 fnOnMoveOK();
@@ -210,7 +246,7 @@ bool CharObject::RequestMove(int nX, int nY, int nSpeed, bool bAllowHalfMove, st
 
                         if(CanMove()){
                             m_Direction = nDir;
-                            DispatchAction(ActionStand(X(), Y(), Direction()));
+                            DispatchAction(false, ActionStand(X(), Y(), Direction()));
                         }
 
                         if(fnOnMoveError){
@@ -296,7 +332,7 @@ bool CharObject::RequestSpaceMove(uint32_t nMapID, int nX, int nY, bool bStrictM
                                                 if(CanMove()){
 
                                                     // 1. dispatch space move part 1 on old map
-                                                    DispatchAction(ActionSpaceMove1(X(), Y(), Direction()));
+                                                    DispatchAction(true, ActionSpaceMove1(X(), Y(), Direction()));
 
                                                     // 2. setup new map
                                                     m_X   = nX;
@@ -308,7 +344,7 @@ bool CharObject::RequestSpaceMove(uint32_t nMapID, int nX, int nY, bool bStrictM
                                                     m_ActorPod->Forward(MPK_OK, rstRAddress, rstRMPK.ID());
 
                                                     // 3. dispatch/report space move part 2 on new map
-                                                    DispatchAction(ActionSpaceMove2(X(), Y(), Direction()));
+                                                    DispatchAction(true, ActionSpaceMove2(X(), Y(), Direction()));
                                                     ReportAction(UID(), ActionSpaceMove2(X(), Y(), Direction()));
 
                                                     if(fnOnMoveOK){
@@ -440,6 +476,8 @@ bool CharObject::RetrieveLocation(uint32_t nUID, std::function<void(const COLoca
         auto fnQueryLocation = [this, nUID, fnOnLocationOK]() -> bool
         {
             AMQueryLocation stAMQL;
+            std::memset(&stAMQL, 0, sizeof(stAMQL));
+
             stAMQL.UID   = UID();
             stAMQL.MapID = MapID();
 

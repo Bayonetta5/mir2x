@@ -134,6 +134,34 @@ void Monster::On_MPK_ACTION(const MessagePack &rstMPK, const Theron::Address &)
     }
 }
 
+void Monster::On_MPK_NOTIFYNEWCO(const MessagePack &rstMPK, const Theron::Address &)
+{
+    AMNotifyNewCO stAMNNCO;
+    std::memcpy(&stAMNNCO, rstMPK.Data(), sizeof(stAMNNCO));
+
+    extern MonoServer *g_MonoServer;
+    if(auto stUIDRecord = g_MonoServer->GetUIDRecord(stAMNNCO.UID)){
+        switch(GetState(STATE_DEAD)){
+            case 0:
+                {
+                    // should make an valid action node and send it
+                    // currently just dispatch through map
+
+                    DispatchAction(true, ActionStand(X(), Y(), Direction()));
+                    break;
+                }
+            default:
+                {
+                    AMNotifyDead stAMND;
+
+                    stAMND.UID = UID();
+                    m_ActorPod->Forward({MPK_NOTIFYDEAD, stAMND}, stUIDRecord.GetAddress());
+                    break;
+                }
+        }
+    }
+}
+
 void Monster::On_MPK_ATTACK(const MessagePack &rstMPK, const Theron::Address &rstAddress)
 {
     AMAttack stAMAK;
@@ -143,7 +171,7 @@ void Monster::On_MPK_ATTACK(const MessagePack &rstMPK, const Theron::Address &rs
         case 0:
             {
                 AddTarget(stAMAK.UID);
-                DispatchAction(ActionHitted(X(), Y(), Direction()));
+                DispatchAction(false, ActionHitted(X(), Y(), Direction()));
 
                 AddHitterUID(stAMAK.UID, stAMAK.Damage);
                 StruckDamage({stAMAK.UID, stAMAK.Type, stAMAK.Damage, stAMAK.Element, stAMAK.Effect});

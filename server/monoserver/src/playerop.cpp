@@ -96,8 +96,36 @@ void Player::On_MPK_ACTION(const MessagePack &rstMPK, const Theron::Address &)
     if(true
             && stAMA.UID != UID()
             && stAMA.MapID == MapID()
-            && (std::abs<int>(stAMA.X - X()) <= SYS_MAPVISIBLEW)
-            && (std::abs<int>(stAMA.Y - Y()) <= SYS_MAPVISIBLEH)){
+            && LDistance2(stAMA.X, stAMA.Y, X(), Y()) < 400){
+
+        // for all types of action node
+        // the x and y are always well-defined
+
+        int nDirection = -1;
+        switch(stAMA.Action){
+            case ACTION_STAND:
+            case ACTION_ATTACK:
+            case ACTION_HITTED:
+                {
+                    nDirection = stAMA.Direction;
+                    break;
+                }
+            default:
+                {
+                    break;
+                }
+        }
+
+        extern MonoServer *g_MonoServer;
+        m_LocationList[stAMA.UID] = COLocation
+        {
+            stAMA.UID,
+            stAMA.MapID,
+            g_MonoServer->GetTimeTick(),
+            stAMA.X,
+            stAMA.Y,
+            nDirection
+        };
 
         ReportAction(stAMA.UID, ActionNode
         {
@@ -112,6 +140,34 @@ void Player::On_MPK_ACTION(const MessagePack &rstMPK, const Theron::Address &)
             stAMA.AimUID,
             stAMA.ActionParam,
         });
+    }
+}
+
+void Player::On_MPK_NOTIFYNEWCO(const MessagePack &rstMPK, const Theron::Address &)
+{
+    AMNotifyNewCO stAMNNCO;
+    std::memcpy(&stAMNNCO, rstMPK.Data(), sizeof(stAMNNCO));
+
+    extern MonoServer *g_MonoServer;
+    if(auto stUIDRecord = g_MonoServer->GetUIDRecord(stAMNNCO.UID)){
+        switch(GetState(STATE_DEAD)){
+            case 0:
+                {
+                    // should make an valid action node and send it
+                    // currently just dispatch through map
+
+                    DispatchAction(true, ActionStand(X(), Y(), Direction()));
+                    break;
+                }
+            default:
+                {
+                    AMNotifyDead stAMND;
+
+                    stAMND.UID = UID();
+                    m_ActorPod->Forward({MPK_NOTIFYDEAD, stAMND}, stUIDRecord.GetAddress());
+                    break;
+                }
+        }
     }
 }
 
@@ -177,7 +233,7 @@ void Player::On_MPK_MAPSWITCH(const MessagePack &rstMPK, const Theron::Address &
                                                 m_ActorPod->Forward(MPK_OK, m_Map->GetAddress(), rstRMPK.ID());
 
                                                 // 2. notify all players on the new map
-                                                DispatchAction(ActionStand(X(), Y(), Direction()));
+                                                DispatchAction(true, ActionStand(X(), Y(), Direction()));
 
                                                 // 3. inform the client for map swith
                                                 ReportStand();
@@ -242,7 +298,7 @@ void Player::On_MPK_ATTACK(const MessagePack &rstMPK, const Theron::Address &)
     AMAttack stAMA;
     std::memcpy(&stAMA, rstMPK.Data(), sizeof(stAMA));
 
-    DispatchAction(ActionHitted(X(), Y(), Direction()));
+    DispatchAction(false, ActionHitted(X(), Y(), Direction()));
     StruckDamage({stAMA.UID, stAMA.Type, stAMA.Damage, stAMA.Element});
 
     ReportAction(UID(), ActionHitted(X(), Y(), Direction()));

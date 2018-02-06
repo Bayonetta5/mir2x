@@ -255,7 +255,9 @@ class CharObject: public ActiveObject
         void DispatchAttack(uint32_t, int);
 
     protected:
-        virtual void DispatchAction(const ActionNode &);
+        virtual void DispatchAction(bool, const ActionNode &);
+
+    protected:
         virtual void ReportAction(uint32_t, const ActionNode &);
 
     protected:

@@ -165,7 +165,7 @@ bool Monster::RandomMove()
                         // current direction is possible for next move
                         // report the turn and do motion (by chance) in next update
                         m_Direction = nDirection;
-                        DispatchAction(ActionStand(X(), Y(), Direction()));
+                        DispatchAction(false, ActionStand(X(), Y(), Direction()));
 
                         // we won't do ReportStand() for monster
                         // monster's moving is only driven by server currently
@@ -223,7 +223,7 @@ bool Monster::AttackUID(uint32_t nUID, int nDC)
                                             m_Direction = PathFind::GetDirection(X(), Y(), nX, nY);
                                             if(CanAttack()){
                                                 // 1. dispatch action to all
-                                                DispatchAction(ActionAttack(X(), Y(), DC_PHY_PLAIN, AttackSpeed(), stRecord.UID()));
+                                                DispatchAction(false, ActionAttack(X(), Y(), DC_PHY_PLAIN, AttackSpeed(), stRecord.UID()));
 
                                                 extern MonoServer *g_MonoServer;
                                                 m_LastAttackTime = g_MonoServer->GetTimeTick();
@@ -372,7 +372,7 @@ bool Monster::FollowMaster()
 
                                     if(Direction() != nDirection){
                                         m_Direction= nDirection;
-                                        DispatchAction(ActionStand(X(), Y(), Direction()));
+                                        DispatchAction(false, ActionStand(X(), Y(), Direction()));
                                     }
                                     return true;
                                 }
@@ -460,6 +460,11 @@ void Monster::OperateAM(const MessagePack &rstMPK, const Theron::Address &rstAdd
         case MPK_METRONOME:
             {
                 On_MPK_METRONOME(rstMPK, rstAddress);
+                break;
+            }
+        case MPK_NOTIFYNEWCO:
+            {
+                On_MPK_NOTIFYNEWCO(rstMPK, rstAddress);
                 break;
             }
         case MPK_NOTIFYDEAD:
@@ -694,7 +699,7 @@ bool Monster::GoDie()
                         {
                             RandomDrop();
                             DispatchHitterExp();
-                            DispatchAction(ActionDie(X(), Y(), Direction()));
+                            DispatchAction(false, ActionDie(X(), Y(), Direction()));
 
                             // let's dispatch ActionDie before mark it dead
                             // theoratically dead actor shouldn't dispatch anything
